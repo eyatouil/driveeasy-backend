@@ -1,0 +1,14 @@
+server:
+  port: 8082
+
+spring:
+  application:
+    name: client-service
+
+driveeasy:
+  client:
+    storage: ram
+    age-minimal-location: 21
+    thresholds:
+      fidele-rentals-count: 5
+      vip-rentals-count: 15
