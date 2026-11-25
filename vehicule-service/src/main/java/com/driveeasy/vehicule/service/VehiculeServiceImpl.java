@@ -1,5 +1,6 @@
 package com.driveeasy.vehicule.service;
 
+import com.driveeasy.vehicule.client.LocationServiceClient;
 import com.driveeasy.vehicule.dto.StatutUpdateDTO;
 import com.driveeasy.vehicule.dto.VehiculeCreateDTO;
 import com.driveeasy.vehicule.dto.VehiculeDTO;
@@ -11,21 +12,29 @@ import com.driveeasy.vehicule.model.Carburant;
 import com.driveeasy.vehicule.model.StatutVehicule;
 import com.driveeasy.vehicule.model.Vehicule;
 import com.driveeasy.vehicule.repository.VehiculeRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.Year;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
 public class VehiculeServiceImpl implements VehiculeService {
 
-    private final VehiculeRepository vehiculeRepository;
+    private static final Logger log = LoggerFactory.getLogger(VehiculeServiceImpl.class);
 
-    public VehiculeServiceImpl(VehiculeRepository vehiculeRepository) {
+    private final VehiculeRepository vehiculeRepository;
+    private final LocationServiceClient locationServiceClient;
+
+    public VehiculeServiceImpl(VehiculeRepository vehiculeRepository, LocationServiceClient locationServiceClient) {
         this.vehiculeRepository = vehiculeRepository;
+        this.locationServiceClient = locationServiceClient;
     }
 
     @Override
@@ -45,8 +54,8 @@ public class VehiculeServiceImpl implements VehiculeService {
     @Override
     public VehiculeDTO createVehicule(VehiculeCreateDTO dto) {
         int currentYear = Year.now().getValue();
-        if (dto.getAnnee() > currentYear + 1) {
-            throw new InvalidOperationException("L'année du véhicule ne peut pas dépasser " + (currentYear + 1));
+        if (dto.getAnnee() > currentYear) {
+            throw new InvalidOperationException("L'année du véhicule ne peut pas dépasser l'année courante (" + currentYear + ")");
         }
 
         if (dto.getPrixJournalier() == null || dto.getPrixJournalier().compareTo(BigDecimal.ZERO) <= 0) {
@@ -84,8 +93,8 @@ public class VehiculeServiceImpl implements VehiculeService {
         if (dto.getModele() != null && !dto.getModele().isBlank()) v.setModele(dto.getModele().trim());
         if (dto.getAnnee() != null) {
             int currentYear = Year.now().getValue();
-            if (dto.getAnnee() > currentYear + 1) {
-                throw new InvalidOperationException("L'année du véhicule ne peut pas dépasser " + (currentYear + 1));
+            if (dto.getAnnee() > currentYear) {
+                throw new InvalidOperationException("L'année du véhicule ne peut pas dépasser l'année courante (" + currentYear + ")");
             }
             v.setAnnee(dto.getAnnee());
         }
@@ -135,8 +144,29 @@ public class VehiculeServiceImpl implements VehiculeService {
 
     @Override
     public List<VehiculeDTO> getVehiculesDisponibles(LocalDate dateDebut, LocalDate dateFin) {
-        // En mémoire, un véhicule disponible est un véhicule avec le statut DISPONIBLE
-        return vehiculeRepository.findDisponibles().stream()
+        if ((dateDebut == null) != (dateFin == null)) {
+            throw new InvalidOperationException("dateDebut et dateFin doivent être fournies ensemble");
+        }
+        if (dateDebut != null && dateDebut.isAfter(dateFin)) {
+            throw new InvalidOperationException("dateDebut doit être antérieure ou égale à dateFin");
+        }
+
+        // Un véhicule MAINTENANCE ou LOUE n'est jamais proposé (règle 5.1) ...
+        List<Vehicule> candidats = vehiculeRepository.findDisponibles();
+
+        // ... et, si une période est fournie, on exclut ceux déjà réservés sur cette période.
+        Set<Long> occupes = new HashSet<>();
+        if (dateDebut != null) {
+            try {
+                occupes.addAll(locationServiceClient.getVehiculesOccupes(dateDebut, dateFin));
+            } catch (Exception e) {
+                // Mode dégradé : location-service injoignable -> on se base sur le statut seul
+                log.warn("location-service injoignable, disponibilité calculée sans les réservations : {}", e.getMessage());
+            }
+        }
+
+        return candidats.stream()
+                .filter(v -> !occupes.contains(v.getId()))
                 .map(this::toDTO)
                 .collect(Collectors.toList());
     }

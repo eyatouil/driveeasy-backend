@@ -25,16 +25,20 @@ public class LoggingGatewayFilter implements GlobalFilter, Ordered {
         log.info("[GATEWAY-IN] Method: {} | Path: {} | Remote: {}",
                 request.getMethod(), request.getURI().getPath(), request.getRemoteAddress());
 
+        // Les en-têtes doivent être posés AVANT le commit de la réponse (sinon les headers
+        // sont en lecture seule et l'ajout lève une UnsupportedOperationException).
+        exchange.getResponse().beforeCommit(() -> {
+            long duration = System.currentTimeMillis() - startTime;
+            exchange.getResponse().getHeaders().add("X-DriveEasy-Gateway", "Handled");
+            exchange.getResponse().getHeaders().add("X-Response-Time-Ms", String.valueOf(duration));
+            return Mono.empty();
+        });
+
         return chain.filter(exchange).then(Mono.fromRunnable(() -> {
-            Long start = exchange.getAttribute(START_TIME);
-            long duration = (start != null) ? (System.currentTimeMillis() - start) : 0L;
-            var response = exchange.getResponse();
-
-            response.getHeaders().add("X-DriveEasy-Gateway", "Handled");
-            response.getHeaders().add("X-Response-Time-Ms", String.valueOf(duration));
-
+            long duration = System.currentTimeMillis() - startTime;
             log.info("[GATEWAY-OUT] Method: {} | Path: {} | Status: {} | Duration: {}ms",
-                    request.getMethod(), request.getURI().getPath(), response.getStatusCode(), duration);
+                    request.getMethod(), request.getURI().getPath(),
+                    exchange.getResponse().getStatusCode(), duration);
         }));
     }
 

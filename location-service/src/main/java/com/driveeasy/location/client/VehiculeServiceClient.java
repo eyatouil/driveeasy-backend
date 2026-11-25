@@ -9,4 +9,7 @@ public interface VehiculeServiceClient {
     VehiculeResponseDTO getVehiculeById(Long id);
     List<VehiculeResponseDTO> getVehiculesDisponibles();
     VehiculeResponseDTO updateStatut(Long id, StatutUpdatePayload payload);
+
+    /** Parc complet (tous statuts) : sert au calcul du taux d'occupation. */
+    List<VehiculeResponseDTO> getTousVehicules();
 }

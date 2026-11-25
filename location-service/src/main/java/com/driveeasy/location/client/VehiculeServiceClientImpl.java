@@ -39,6 +39,14 @@ public class VehiculeServiceClientImpl implements VehiculeServiceClient {
     }
 
     @Override
+    public List<VehiculeResponseDTO> getTousVehicules() {
+        ResponseEntity<List<VehiculeResponseDTO>> response = restTemplate.exchange(
+                BASE_URL, HttpMethod.GET, null,
+                new ParameterizedTypeReference<List<VehiculeResponseDTO>>() {});
+        return response.getBody() != null ? response.getBody() : Collections.emptyList();
+    }
+
+    @Override
     public VehiculeResponseDTO updateStatut(Long id, StatutUpdatePayload payload) {
         HttpEntity<StatutUpdatePayload> requestEntity = new HttpEntity<>(payload);
         ResponseEntity<VehiculeResponseDTO> response = restTemplate.exchange(

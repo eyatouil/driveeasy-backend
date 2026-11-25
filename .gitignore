@@ -32,3 +32,8 @@ target/
 *.log
 *.tmp
 .DS_Store
+
+### Divers ###
+*.log
+.env
+*.pdf

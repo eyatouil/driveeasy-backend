@@ -22,14 +22,33 @@ public class LocationController {
         this.locationService = locationService;
     }
 
+    /**
+     * Liste des locations, filtrable (statut, client, véhicule, période).
+     * Pagination : paramètres optionnels page (défaut 0) et size (défaut : tout).
+     * Le corps reste un tableau JSON ; les métadonnées sont dans les en-têtes
+     * X-Total-Count, X-Total-Pages, X-Page et X-Page-Size.
+     */
     @GetMapping
     public ResponseEntity<List<LocationDTO>> getAllLocations(
             @RequestParam(required = false) StatutLocation statut,
             @RequestParam(required = false) Long clientId,
             @RequestParam(required = false) Long vehiculeId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateDebut,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFin) {
-        return ResponseEntity.ok(locationService.getAllLocations(statut, clientId, vehiculeId, dateDebut, dateFin));
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFin,
+            @RequestParam(required = false) Integer page,
+            @RequestParam(required = false) Integer size) {
+        if (page == null && size == null) {
+            return ResponseEntity.ok(locationService.getAllLocations(statut, clientId, vehiculeId, dateDebut, dateFin));
+        }
+        PageResult<LocationDTO> result = locationService.getLocationsPage(
+                statut, clientId, vehiculeId, dateDebut, dateFin,
+                page != null ? page : 0, size != null ? size : 10);
+        return ResponseEntity.ok()
+                .header("X-Total-Count", String.valueOf(result.getTotalElements()))
+                .header("X-Total-Pages", String.valueOf(result.getTotalPages()))
+                .header("X-Page", String.valueOf(result.getPage()))
+                .header("X-Page-Size", String.valueOf(result.getSize()))
+                .body(result.getContent());
     }
 
     @GetMapping("/{id}")
@@ -65,6 +84,14 @@ public class LocationController {
     @PatchMapping("/{id}/annulation")
     public ResponseEntity<LocationDTO> annulerLocation(@PathVariable Long id) {
         return ResponseEntity.ok(locationService.annulerLocation(id));
+    }
+
+    /** Utilisé par vehicule-service pour calculer les véhicules disponibles sur une période. */
+    @GetMapping("/vehicules-occupes")
+    public ResponseEntity<List<Long>> getVehiculesOccupes(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateDebut,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFin) {
+        return ResponseEntity.ok(locationService.getVehiculesOccupes(dateDebut, dateFin));
     }
 
     @GetMapping("/statistiques")

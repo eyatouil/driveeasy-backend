@@ -51,7 +51,7 @@ L'application respecte les principes d'une architecture distribuée découplée 
 | **Config Server** | Spring Cloud Config Server | **8888** | Configuration centralisée externalisée |
 | **vehicule-service** | Spring Boot 3.x / Web | **8081** | Gestion du parc, disponibilité, kilométrage |
 | **client-service** | Spring Boot 3.x / Web | **8082** | Gestion des clients, contrôle d'éligibilité |
-| **location-service** | Spring Boot 3.x / OpenFeign | **8083** | Cycle de vie des locations, facturation |
+| **location-service** | Spring Boot 3.x / RestTemplate `@LoadBalanced` | **8083** | Cycle de vie des locations, facturation |
 | **API Gateway** | Spring Cloud Gateway | **8080** | Point d'entrée unique, routage, CORS, filtres |
 | **Zipkin** | Docker (`openzipkin/zipkin`) | **9411** | Traçage distribué des requêtes |
 
@@ -70,12 +70,23 @@ L'application respecte les principes d'une architecture distribuée découplée 
 
 ## 3. Instructions d'Installation et Lancement
 
-### Étape 0 : Cloner le dépôt et compiler
+### Étape 0 : Cloner les dépôts et compiler
+La configuration est externalisée dans un **dépôt Git séparé** (`driveeasy-config`) lu par le Config Server.
 ```bash
-git clone https://github.com/votre-compte/driveeasy-backend.git
+git clone https://github.com/eyatouil/driveeasy-backend.git
+git clone https://github.com/eyatouil/driveeasy-config.git   # à publier sur GitHub (contenu du dossier driveeasy-config)
 cd driveeasy-backend
 mvn clean install -DskipTests
 ```
+Renseigner l'URI du dépôt de configuration avant de lancer le Config Server :
+```bash
+# Windows (cmd)      set CONFIG_GIT_URI=https://github.com/eyatouil/driveeasy-config.git
+# Linux / macOS      export CONFIG_GIT_URI=https://github.com/eyatouil/driveeasy-config.git
+```
+(ou modifier `config-server/src/main/resources/application.yml`). Hors-ligne : `mvn spring-boot:run -Dspring-boot.run.profiles=native` lit le dossier voisin `../driveeasy-config`.
+
+> Les microservices et la gateway **ne démarrent pas sans Config Server** (import non optionnel) : respecter l'ordre ci-dessous.
+> Démarrage automatisé : `start-backend.bat` (Windows) ou `./start-backend.sh` (Linux/macOS).
 
 ### Étape 1 : Démarrer Zipkin (Monitoring / Traçage)
 ```bash
@@ -98,7 +109,7 @@ Pour garantir la découverte et la distribution de configuration, lancez les mic
    ```bash
    cd config-server
    mvn spring-boot:run
-   # Vérification : http://localhost:8888/vehicule-service/default
+   # Vérification : http://localhost:8888/vehicule-service/default (doit renvoyer les propriétés du dépôt Git)
    ```
 
 3. **Microservices Métier**
@@ -159,6 +170,12 @@ Tout le trafic client passe par `http://localhost:8080/api/...` :
 
 ---
 
+> **Note datasource (§4.2)** : aucune propriété `spring.datasource.*` n'est externalisée car les bases de données sont interdites ; les propriétés externalisées sont le port, Eureka, Zipkin, les propriétés métier (`driveeasy.*`) et, pour la gateway, les routes et le CORS.
+
+> **Routage** : `GET /api/locations/statistiques` est correctement résolu car Spring MVC donne la priorité au chemin littéral sur `/{id}` ; `StripPrefix=1` retire `/api` avant l'appel du service.
+
+---
+
 ## 5. Jeux de Données Initiaux en RAM
 
 Au démarrage, les services sont pré-peuplés avec des jeux de données réalistes :
@@ -205,3 +222,11 @@ Consultez l'interface Zipkin sur `http://localhost:9411` pour visualiser :
 - Le graphe de dépendance inter-services
 - Le temps de réponse de chaque composant
 - Les traces transversales : `api-gateway` $\rightarrow$ `location-service` $\rightarrow$ `vehicule-service` & `client-service`
+
+## Compléments (corrections de cohérence)
+- `GET /locations?page=0&size=10` : pagination optionnelle (en-têtes `X-Total-Count`, `X-Total-Pages`).
+- `DELETE /clients/{id}` : refusé (409) si le client a une location RESERVEE ou EN_COURS ; 503 si location-service est injoignable.
+- Retour de véhicule : le véhicule est libéré avant la clôture ; en cas d'échec la location reste EN_COURS (503).
+- Appels inter-services PATCH : client HTTP du JDK (HttpURLConnection ne supporte pas PATCH).
+- Prix = jours × prix journalier × coefficient catégorie − remise fidélité (coefficients dans `driveeasy-config/location-service.yml`).
+- Année d'un véhicule ≤ année courante.

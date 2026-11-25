@@ -12,6 +12,7 @@ import com.driveeasy.location.model.StatutLocation;
 import com.driveeasy.location.repository.LocationRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -31,6 +32,24 @@ public class LocationServiceImpl implements LocationService {
     private final LocationRepository locationRepository;
     private final ClientServiceClient clientServiceClient;
     private final VehiculeServiceClient vehiculeServiceClient;
+
+    // Paramètres métier externalisés dans le Config Server (location-service.yml)
+    @Value("${driveeasy.location.tarification.remise-fidele:0.05}")
+    private BigDecimal remiseFidele;
+    @Value("${driveeasy.location.tarification.remise-vip:0.10}")
+    private BigDecimal remiseVip;
+    @Value("${driveeasy.location.tarification.coefficient-standard:1.0}")
+    private BigDecimal coefStandard;
+    @Value("${driveeasy.location.tarification.coefficient-fidele:1.0}")
+    private BigDecimal coefFidele;
+    @Value("${driveeasy.location.tarification.coefficient-vip:1.0}")
+    private BigDecimal coefVip;
+    @Value("${driveeasy.location.tarification.penalite-retard-facteur:1.5}")
+    private BigDecimal facteurPenalite;
+    @Value("${driveeasy.location.fidelite.palier-fidele:5}")
+    private long palierFidele;
+    @Value("${driveeasy.location.fidelite.palier-vip:15}")
+    private long palierVip;
 
     public LocationServiceImpl(LocationRepository locationRepository,
                                ClientServiceClient clientServiceClient,
@@ -86,16 +105,10 @@ public class LocationServiceImpl implements LocationService {
         long duree = Math.max(1, ChronoUnit.DAYS.between(loc.getDateDebut(), loc.getDateFinPrevue()));
         dto.setDureeJours(duree);
 
-        BigDecimal remiseRate = BigDecimal.ZERO;
-        if (client != null && client.getCategorieClient() != null) {
-            if ("VIP".equalsIgnoreCase(client.getCategorieClient())) {
-                remiseRate = new BigDecimal("0.10");
-            } else if ("FIDELE".equalsIgnoreCase(client.getCategorieClient())) {
-                remiseRate = new BigDecimal("0.05");
-            }
-        }
+        String catClient = client != null ? client.getCategorieClient() : null;
+        BigDecimal remiseRate = tauxRemise(catClient);
         dto.setRemisePourcentage(remiseRate.multiply(new BigDecimal("100")));
-        BigDecimal base = loc.getPrixJournalierApplique().multiply(BigDecimal.valueOf(duree));
+        BigDecimal base = loc.getPrixJournalierApplique().multiply(BigDecimal.valueOf(duree)).multiply(coefficient(catClient));
         dto.setRemiseMontant(base.multiply(remiseRate).setScale(2, RoundingMode.HALF_UP));
 
         return dto;
@@ -152,15 +165,10 @@ public class LocationServiceImpl implements LocationService {
         // 4. Calcul du prix
         long days = Math.max(1, ChronoUnit.DAYS.between(dto.getDateDebut(), dto.getDateFinPrevue()));
         BigDecimal prixJournalier = vehicule.getPrixJournalier();
-        BigDecimal brut = prixJournalier.multiply(BigDecimal.valueOf(days));
-
-        BigDecimal remiseRate = BigDecimal.ZERO;
         String cat = eligibilite.getCategorieClient();
-        if ("VIP".equalsIgnoreCase(cat)) {
-            remiseRate = new BigDecimal("0.10");
-        } else if ("FIDELE".equalsIgnoreCase(cat)) {
-            remiseRate = new BigDecimal("0.05");
-        }
+        // Prix = jours × prix journalier × coefficient catégorie − remise fidélité
+        BigDecimal brut = prixJournalier.multiply(BigDecimal.valueOf(days)).multiply(coefficient(cat));
+        BigDecimal remiseRate = tauxRemise(cat);
         BigDecimal remiseMontant = brut.multiply(remiseRate).setScale(2, RoundingMode.HALF_UP);
         BigDecimal montantTotal = brut.subtract(remiseMontant).setScale(2, RoundingMode.HALF_UP);
 
@@ -213,14 +221,8 @@ public class LocationServiceImpl implements LocationService {
 
         long days = Math.max(1, ChronoUnit.DAYS.between(dto.getDateDebut(), dto.getDateFinPrevue()));
         BigDecimal prixJournalier = vehicule.getPrixJournalier();
-        BigDecimal brut = prixJournalier.multiply(BigDecimal.valueOf(days));
-
-        BigDecimal remiseRate = BigDecimal.ZERO;
-        if ("VIP".equalsIgnoreCase(categorie)) {
-            remiseRate = new BigDecimal("0.10");
-        } else if ("FIDELE".equalsIgnoreCase(categorie)) {
-            remiseRate = new BigDecimal("0.05");
-        }
+        BigDecimal brut = prixJournalier.multiply(BigDecimal.valueOf(days)).multiply(coefficient(categorie)).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal remiseRate = tauxRemise(categorie);
         BigDecimal remiseMontant = brut.multiply(remiseRate).setScale(2, RoundingMode.HALF_UP);
         BigDecimal total = brut.subtract(remiseMontant).setScale(2, RoundingMode.HALF_UP);
 
@@ -277,27 +279,29 @@ public class LocationServiceImpl implements LocationService {
         }
 
         LocalDate dateRetour = dto.getDateRetourEffectif() != null ? dto.getDateRetourEffectif() : LocalDate.now();
-        loc.setDateRetourEffectif(dateRetour);
-        loc.setKmRetour(dto.getKmRetour());
 
-        // Calcul des pénalités de retard : 1.5 * prix journalier par jour de retard
+        // Pénalité de retard : 1,5 × prix journalier par jour de retard
         BigDecimal penalite = BigDecimal.ZERO;
         if (dateRetour.isAfter(loc.getDateFinPrevue())) {
             long joursRetard = ChronoUnit.DAYS.between(loc.getDateFinPrevue(), dateRetour);
-            BigDecimal facteur = new BigDecimal("1.5");
-            penalite = facteur.multiply(loc.getPrixJournalierApplique()).multiply(BigDecimal.valueOf(joursRetard))
+            penalite = facteurPenalite.multiply(loc.getPrixJournalierApplique()).multiply(BigDecimal.valueOf(joursRetard))
                     .setScale(2, RoundingMode.HALF_UP);
         }
-        loc.setPenalite(penalite);
-        loc.setMontantTotal(loc.getMontantTotal().add(penalite));
-        loc.setStatut(StatutLocation.TERMINEE);
 
-        // Appel inter-service : libération du véhicule (DISPONIBLE + nouveau kilométrage)
+        // Appel inter-service en premier : si le véhicule ne peut pas être libéré, la location
+        // reste EN_COURS et rien n'est modifié (cohérence de la transaction distribuée).
         try {
             vehiculeServiceClient.updateStatut(loc.getVehiculeId(), new StatutUpdatePayload("DISPONIBLE", dto.getKmRetour()));
         } catch (Exception e) {
-            log.error("Erreur lors de la mise à jour du véhicule au retour : {}", e.getMessage());
+            log.error("Retour annulé : échec de la mise à jour du véhicule {} : {}", loc.getVehiculeId(), e.getMessage());
+            throw new InterServiceException("Retour impossible : échec de la mise à jour du véhicule : " + e.getMessage(), e);
         }
+
+        loc.setDateRetourEffectif(dateRetour);
+        loc.setKmRetour(dto.getKmRetour());
+        loc.setPenalite(penalite);
+        loc.setMontantTotal(loc.getMontantTotal().add(penalite));
+        loc.setStatut(StatutLocation.TERMINEE);
 
         Location updated = locationRepository.save(loc);
 
@@ -305,9 +309,9 @@ public class LocationServiceImpl implements LocationService {
         // 5 locations terminées -> FIDELE, 15 -> VIP
         try {
             long countTerminees = locationRepository.countCompletedByClientId(loc.getClientId());
-            if (countTerminees >= 15) {
+            if (countTerminees >= palierVip) {
                 clientServiceClient.updateCategorie(loc.getClientId(), new CategorieUpdatePayload("VIP"));
-            } else if (countTerminees >= 5) {
+            } else if (countTerminees >= palierFidele) {
                 clientServiceClient.updateCategorie(loc.getClientId(), new CategorieUpdatePayload("FIDELE"));
             }
         } catch (Exception e) {
@@ -331,7 +335,8 @@ public class LocationServiceImpl implements LocationService {
             try {
                 vehiculeServiceClient.updateStatut(loc.getVehiculeId(), new StatutUpdatePayload("DISPONIBLE"));
             } catch (Exception e) {
-                log.warn("Erreur compensation lors de l'annulation : {}", e.getMessage());
+                log.error("Annulation refusée : véhicule {} non libéré : {}", loc.getVehiculeId(), e.getMessage());
+                throw new InterServiceException("Annulation impossible : échec de la libération du véhicule : " + e.getMessage(), e);
             }
         }
 
@@ -362,18 +367,15 @@ public class LocationServiceImpl implements LocationService {
         long annulees = locationRepository.countByStatut(StatutLocation.ANNULEE);
         long total = all.size();
 
-        // Taux d'occupation estimé
+        // Taux d'occupation = locations EN_COURS / taille du parc (tous statuts confondus)
         double tauxOccupation = 0.0;
         try {
-            List<VehiculeResponseDTO> dispo = vehiculeServiceClient.getVehiculesDisponibles();
-            long totalVehicules = (dispo != null ? dispo.size() : 0) + enCours;
-            if (totalVehicules > 0) {
-                tauxOccupation = Math.round(((double) enCours / totalVehicules * 100.0) * 10.0) / 10.0;
+            List<VehiculeResponseDTO> parc = vehiculeServiceClient.getTousVehicules();
+            if (parc != null && !parc.isEmpty()) {
+                tauxOccupation = Math.round(((double) enCours / parc.size() * 100.0) * 10.0) / 10.0;
             }
         } catch (Exception e) {
-            if (total > 0) {
-                tauxOccupation = Math.round(((double) enCours / total * 100.0) * 10.0) / 10.0;
-            }
+            log.warn("Taux d'occupation indisponible (vehicule-service injoignable) : {}", e.getMessage());
         }
 
         // Top véhicules les plus loués
@@ -410,6 +412,44 @@ public class LocationServiceImpl implements LocationService {
         stats.setTopVehicules(topVehicules);
 
         return stats;
+    }
+
+    /** Remise de fidélité selon la catégorie (FIDELE : 5 %, VIP : 10 %). */
+    private BigDecimal tauxRemise(String categorie) {
+        if ("VIP".equalsIgnoreCase(categorie)) return remiseVip;
+        if ("FIDELE".equalsIgnoreCase(categorie)) return remiseFidele;
+        return BigDecimal.ZERO;
+    }
+
+    /** Coefficient de tarification selon la catégorie du client. */
+    private BigDecimal coefficient(String categorie) {
+        if ("VIP".equalsIgnoreCase(categorie)) return coefVip;
+        if ("FIDELE".equalsIgnoreCase(categorie)) return coefFidele;
+        return coefStandard;
+    }
+
+    @Override
+    public PageResult<LocationDTO> getLocationsPage(StatutLocation statut, Long clientId, Long vehiculeId,
+                                                    LocalDate dateDebut, LocalDate dateFin, int page, int size) {
+        int safeSize = Math.max(1, Math.min(size, 100));
+        int safePage = Math.max(0, page);
+        List<LocationDTO> all = getAllLocations(statut, clientId, vehiculeId, dateDebut, dateFin);
+        int from = (int) Math.min((long) safePage * safeSize, all.size());
+        int to = Math.min(from + safeSize, all.size());
+        return new PageResult<>(new ArrayList<>(all.subList(from, to)), safePage, safeSize, all.size());
+    }
+
+    @Override
+    public List<Long> getVehiculesOccupes(LocalDate dateDebut, LocalDate dateFin) {
+        if (dateDebut.isAfter(dateFin)) {
+            throw new BusinessValidationException("La date de début doit être antérieure ou égale à la date de fin");
+        }
+        return locationRepository.findAll().stream()
+                .filter(l -> l.getStatut() == StatutLocation.RESERVEE || l.getStatut() == StatutLocation.EN_COURS)
+                .filter(l -> datesOverlap(dateDebut, dateFin, l.getDateDebut(), l.getDateFinPrevue()))
+                .map(Location::getVehiculeId)
+                .distinct()
+                .collect(Collectors.toList());
     }
 
     private boolean datesOverlap(LocalDate start1, LocalDate end1, LocalDate start2, LocalDate end2) {

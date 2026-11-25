@@ -1,5 +1,6 @@
 package com.driveeasy.client.service;
 
+import com.driveeasy.client.client.LocationServiceClient;
 import com.driveeasy.client.dto.*;
 import com.driveeasy.client.exception.DuplicateResourceException;
 import com.driveeasy.client.exception.InvalidOperationException;
@@ -19,9 +20,11 @@ import java.util.stream.Collectors;
 public class ClientServiceImpl implements ClientService {
 
     private final ClientRepository clientRepository;
+    private final LocationServiceClient locationServiceClient;
 
-    public ClientServiceImpl(ClientRepository clientRepository) {
+    public ClientServiceImpl(ClientRepository clientRepository, LocationServiceClient locationServiceClient) {
         this.clientRepository = clientRepository;
+        this.locationServiceClient = locationServiceClient;
     }
 
     @Override
@@ -108,6 +111,10 @@ public class ClientServiceImpl implements ClientService {
     public void deleteClient(Long id) {
         if (!clientRepository.existsById(id)) {
             throw new ResourceNotFoundException("Client avec l'ID " + id + " non trouvé");
+        }
+        // Règle de gestion : suppression refusée si le client a une location active
+        if (locationServiceClient.hasActiveLocation(id)) {
+            throw new DuplicateResourceException("Suppression impossible : le client a une location active (réservée ou en cours)");
         }
         clientRepository.deleteById(id);
     }

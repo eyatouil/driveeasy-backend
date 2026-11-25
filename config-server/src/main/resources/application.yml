@@ -4,13 +4,16 @@ server:
 spring:
   application:
     name: config-server
-  profiles:
-    active: native
   cloud:
     config:
       server:
-        native:
-          search-locations: classpath:/configurations
+        git:
+          # Dépôt GitHub contenant les fichiers de configuration.
+          # Remplacer par votre dépôt, ou définir la variable d'environnement CONFIG_GIT_URI.
+          uri: ${CONFIG_GIT_URI:https://github.com/eyatouil/driveeasy-config.git}
+          default-label: main
+          clone-on-start: true   # échec visible dès le démarrage si le dépôt est inaccessible
+          timeout: 10
 
 eureka:
   instance:
@@ -24,4 +27,22 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info,metrics,env
+        include: health,info
+  tracing:
+    sampling:
+      probability: 1.0
+  zipkin:
+    tracing:
+      endpoint: http://localhost:9411/api/v2/spans
+
+---
+# Mode hors-ligne (développement sans Internet) : mvn spring-boot:run -Dspring-boot.run.profiles=native
+spring:
+  config:
+    activate:
+      on-profile: native
+  cloud:
+    config:
+      server:
+        native:
+          search-locations: file:../driveeasy-config

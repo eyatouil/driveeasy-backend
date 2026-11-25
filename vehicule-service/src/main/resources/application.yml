@@ -1,31 +1,8 @@
-server:
-  port: 8081
-
+# Configuration locale minimale : tout le reste (port, Eureka, Zipkin, routes,
+# propriétés métier) est fourni par le Config Server (dépôt driveeasy-config).
+# L'import n'est PAS optionnel : sans Config Server, le service refuse de démarrer.
 spring:
   application:
     name: vehicule-service
   config:
-    import: "optional:configserver:http://localhost:8888"
-
-eureka:
-  instance:
-    prefer-ip-address: true
-    instance-id: ${spring.application.name}:${server.port}
-  client:
-    service-url:
-      defaultZone: http://localhost:8761/eureka/
-
-management:
-  endpoints:
-    web:
-      exposure:
-        include: health,info,metrics
-  endpoint:
-    health:
-      show-details: always
-  tracing:
-    sampling:
-      probability: 1.0
-  zipkin:
-    tracing:
-      endpoint: http://localhost:9411/api/v2/spans
+    import: "configserver:${CONFIG_SERVER_URL:http://localhost:8888}"
