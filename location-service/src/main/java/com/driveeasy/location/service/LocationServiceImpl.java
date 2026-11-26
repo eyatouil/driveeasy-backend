@@ -13,6 +13,7 @@ import com.driveeasy.location.repository.LocationRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -124,10 +125,11 @@ public class LocationServiceImpl implements LocationService {
         EligibiliteResponseDTO eligibilite;
         try {
             eligibilite = clientServiceClient.getEligibilite(dto.getClientId());
+        } catch (HttpClientErrorException.NotFound e) {
+            throw new ResourceNotFoundException("Client avec l'ID " + dto.getClientId() + " introuvable");
         } catch (Exception e) {
             throw new InterServiceException("Échec de la communication avec client-service : " + e.getMessage(), e);
         }
-
         if (eligibilite == null || !eligibilite.isEligible()) {
             String motif = eligibilite != null && eligibilite.getMotifRefus() != null
                     ? eligibilite.getMotifRefus()
@@ -139,6 +141,8 @@ public class LocationServiceImpl implements LocationService {
         VehiculeResponseDTO vehicule;
         try {
             vehicule = vehiculeServiceClient.getVehiculeById(dto.getVehiculeId());
+        } catch (HttpClientErrorException.NotFound e) {
+            throw new ResourceNotFoundException("Véhicule avec l'ID " + dto.getVehiculeId() + " introuvable");
         } catch (Exception e) {
             throw new InterServiceException("Échec de la communication avec vehicule-service : " + e.getMessage(), e);
         }
@@ -198,6 +202,8 @@ public class LocationServiceImpl implements LocationService {
         VehiculeResponseDTO vehicule;
         try {
             vehicule = vehiculeServiceClient.getVehiculeById(dto.getVehiculeId());
+        } catch (HttpClientErrorException.NotFound e) {
+            throw new ResourceNotFoundException("Véhicule avec l'ID " + dto.getVehiculeId() + " introuvable");
         } catch (Exception e) {
             throw new InterServiceException("Impossible d'obtenir les tarifs du véhicule : " + e.getMessage(), e);
         }
