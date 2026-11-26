@@ -63,8 +63,8 @@ L'application respecte les principes d'une architecture distribuée découplée 
 
 - **JDK 21** installé (`java -version`)
 - **Apache Maven 3.8+** (`mvn -version`)
-- **Docker** & **Docker Compose** pour le serveur Zipkin
 - **Git**
+- *(Optionnel)* Docker pour le serveur Zipkin si souhaité
 
 ---
 

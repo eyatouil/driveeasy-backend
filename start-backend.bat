@@ -1,25 +1,36 @@
 @echo off
 chcp 65001 > nul
-REM DÃ©marre toute la plateforme. PrÃ©requis : JDK 21 et Maven dans le PATH, Docker dÃ©marrÃ©.
+REM Demarrage de toute la plateforme DriveEasy (100%% Java - Sans Docker).
 set "ROOT=%~dp0"
-echo [0] Zipkin (Docker)...
-pushd "%ROOT%" & docker compose up -d & popd
 
-echo [1/5] Service Registry (8761)...
+echo ========================================================
+echo        DEMARRAGE DE LA PLATEFORME DRIVE-EASY
+echo ========================================================
+
+echo [1/4] Service Registry Eureka (port 8761)...
 start "Eureka [8761]" cmd /k "cd /d %ROOT%service-registry && mvn spring-boot:run"
-timeout /t 40 /nobreak > nul
+echo En attente de l'initialisation d'Eureka (25s)...
+timeout /t 25 /nobreak > nul
 
-echo [2/5] Config Server (8888)...
+echo [2/4] Config Server (port 8888)...
 start "Config Server [8888]" cmd /k "cd /d %ROOT%config-server && mvn spring-boot:run"
-timeout /t 40 /nobreak > nul
+echo En attente de l'initialisation du Config Server (20s)...
+timeout /t 20 /nobreak > nul
 
-echo [3/5] Microservices metier...
-start "Vehicule [8081]"  cmd /k "cd /d %ROOT%vehicule-service && mvn spring-boot:run"
-start "Client [8082]"    cmd /k "cd /d %ROOT%client-service && mvn spring-boot:run"
-start "Location [8083]"  cmd /k "cd /d %ROOT%location-service && mvn spring-boot:run"
-timeout /t 45 /nobreak > nul
+echo [3/4] Microservices metier (ports 8081, 8082, 8083)...
+start "Vehicule-Service [8081]" cmd /k "cd /d %ROOT%vehicule-service && mvn spring-boot:run"
+start "Client-Service [8082]"   cmd /k "cd /d %ROOT%client-service && mvn spring-boot:run"
+start "Location-Service [8083]" cmd /k "cd /d %ROOT%location-service && mvn spring-boot:run"
+echo En attente des 3 microservices (25s)...
+timeout /t 25 /nobreak > nul
 
-echo [4/5] API Gateway (8080)...
-start "Gateway [8080]" cmd /k "cd /d %ROOT%api-gateway && mvn spring-boot:run"
-echo Eureka : http://localhost:8761 - Zipkin : http://localhost:9411 - Gateway : http://localhost:8080
+echo [4/4] API Gateway (port 8080)...
+start "API-Gateway [8080]" cmd /k "cd /d %ROOT%api-gateway && mvn spring-boot:run"
 
+echo ========================================================
+echo  TOUS LES SERVICES SONT EN COURS D'EXECUTION !
+echo  - Eureka Dashboard : http://localhost:8761
+echo  - Config Server    : http://localhost:8888/location-service/default
+echo  - API Gateway      : http://localhost:8080/api/vehicules
+echo ========================================================
+pause

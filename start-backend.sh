@@ -1,10 +1,24 @@
 #!/usr/bin/env bash
-# Linux / macOS : démarre toute la plateforme (JDK 21, Maven, Docker requis)
+set -e
 ROOT="$(cd "$(dirname "$0")" && pwd)"
-docker compose -f "$ROOT/docker-compose.yml" up -d
-run() { (cd "$ROOT/$1" && mvn -q spring-boot:run > "$ROOT/$1.log" 2>&1 &) ; }
-run service-registry; sleep 15
-run config-server;    sleep 15
-run vehicule-service; run client-service; run location-service; sleep 20
-run api-gateway
-echo "Eureka http://localhost:8761 | Zipkin http://localhost:9411 | Gateway http://localhost:8080"
+
+echo "=== Démarrage DriveEasy (Sans Docker) ==="
+echo "[1/4] Service Registry (8761)..."
+(cd "$ROOT/service-registry" && mvn spring-boot:run) &
+sleep 25
+
+echo "[2/4] Config Server (8888)..."
+(cd "$ROOT/config-server" && mvn spring-boot:run) &
+sleep 20
+
+echo "[3/4] Microservices métier..."
+(cd "$ROOT/vehicule-service" && mvn spring-boot:run) &
+(cd "$ROOT/client-service" && mvn spring-boot:run) &
+(cd "$ROOT/location-service" && mvn spring-boot:run) &
+sleep 25
+
+echo "[4/4] API Gateway (8080)..."
+(cd "$ROOT/api-gateway" && mvn spring-boot:run) &
+
+echo "Prêt. Eureka : http://localhost:8761 - Gateway : http://localhost:8080"
+wait
