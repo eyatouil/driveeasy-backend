@@ -7,6 +7,7 @@ import com.driveeasy.vehicule.dto.VehiculeDTO;
 import com.driveeasy.vehicule.dto.VehiculeUpdateDTO;
 import com.driveeasy.vehicule.exception.DuplicateResourceException;
 import com.driveeasy.vehicule.exception.InvalidOperationException;
+import com.driveeasy.vehicule.exception.ServiceUnavailableException;
 import com.driveeasy.vehicule.exception.ResourceNotFoundException;
 import com.driveeasy.vehicule.model.Carburant;
 import com.driveeasy.vehicule.model.StatutVehicule;
@@ -160,8 +161,10 @@ public class VehiculeServiceImpl implements VehiculeService {
             try {
                 occupes.addAll(locationServiceClient.getVehiculesOccupes(dateDebut, dateFin));
             } catch (Exception e) {
-                // Mode dégradé : location-service injoignable -> on se base sur le statut seul
-                log.warn("location-service injoignable, disponibilité calculée sans les réservations : {}", e.getMessage());
+                // Pas de mode dégradé : sans les réservations, la disponibilité serait fausse.
+                log.error("location-service injoignable : disponibilité impossible à garantir : {}", e.getMessage());
+                throw new ServiceUnavailableException(
+                        "Le service des locations est temporairement indisponible : disponibilité non vérifiable", e);
             }
         }
 

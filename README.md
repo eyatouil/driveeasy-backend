@@ -181,13 +181,13 @@ Tout le trafic client passe par `http://localhost:8080/api/...` :
 Au démarrage, les services sont pré-peuplés avec des jeux de données réalistes :
 
 ### Véhicules
-- **ID 1** : Peugeot 208 GT (`240 TUN 1021`), 45.00€/j, DISPONIBLE
-- **ID 2** : Renault Clio 5 E-Tech (`238 TUN 4412`), 50.00€/j, DISPONIBLE
-- **ID 3** : Volkswagen Golf 8 (`235 TUN 7890`), 65.00€/j, DISPONIBLE
-- **ID 4** : Tesla Model 3 Long Range (`242 TUN 9901`), 95.00€/j, DISPONIBLE
-- **ID 5** : Hyundai Tucson N-Line (`231 TUN 3310`), 80.00€/j, LOUE
-- **ID 6** : Mercedes-Benz Classe A (`241 TUN 6643`), 90.00€/j, DISPONIBLE
-- **ID 8** : Dacia Sandero Stepway (`229 TUN 1982`), 35.00€/j, MAINTENANCE
+- **ID 1** : Peugeot 208 GT (`240 TUN 1021`), 45.00 DT/j, DISPONIBLE
+- **ID 2** : Renault Clio 5 E-Tech (`238 TUN 4412`), 50.00 DT/j, DISPONIBLE
+- **ID 3** : Volkswagen Golf 8 (`235 TUN 7890`), 65.00 DT/j, DISPONIBLE
+- **ID 4** : Tesla Model 3 Long Range (`242 TUN 9901`), 95.00 DT/j, DISPONIBLE
+- **ID 5** : Hyundai Tucson N-Line (`231 TUN 3310`), 80.00 DT/j, LOUE
+- **ID 6** : Mercedes-Benz Classe A (`241 TUN 6643`), 90.00 DT/j, DISPONIBLE
+- **ID 8** : Dacia Sandero Stepway (`229 TUN 1982`), 35.00 DT/j, MAINTENANCE
 
 ### Clients
 - **ID 1** : Karim Ben Romdhane (`08123456`, VIP - 10% remise)
@@ -230,3 +230,13 @@ Consultez l'interface Zipkin sur `http://localhost:9411` pour visualiser :
 - Appels inter-services PATCH : client HTTP du JDK (HttpURLConnection ne supporte pas PATCH).
 - Prix = jours × prix journalier × coefficient catégorie − remise fidélité (coefficients dans `driveeasy-config/location-service.yml`).
 - Année d'un véhicule ≤ année courante.
+
+## Tests unitaires
+
+43 tests (vehicule-service 9, client-service 11, location-service 23), clients inter-services simulés :
+
+```bash
+cd driveeasy-backend
+mvn clean test       # rapports : */target/surefire-reports
+mvn clean install    # build complet
+```
